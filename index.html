@@ -1,0 +1,1228 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Amazon Aurora — Caso Práctico 3</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --aws-orange: #FF9900;
+    --aws-dark: #0A1628;
+    --aws-blue: #1A6EBF;
+    --aws-cyan: #00A8CC;
+    --aws-light: #E8F4FD;
+    --aws-mid: #1D2D50;
+    --accent-green: #00D68F;
+    --accent-red: #FF4D6D;
+    --text-primary: #F0F6FF;
+    --text-muted: #7B9BC4;
+    --card-bg: rgba(26, 110, 191, 0.1);
+    --border: rgba(0, 168, 204, 0.25);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--aws-dark);
+    color: var(--text-primary);
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+  }
+
+  /* ── PROGRESS BAR ── */
+  #progress-bar {
+    position: fixed;
+    top: 0; left: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--aws-orange), var(--aws-cyan));
+    transition: width 0.4s ease;
+    z-index: 100;
+  }
+
+  /* ── NAV ── */
+  nav {
+    position: fixed;
+    bottom: 32px; left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(10,22,40,0.85);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+    border-radius: 50px;
+    padding: 10px 20px;
+    z-index: 100;
+  }
+
+  nav button {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 18px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    transition: all 0.2s;
+  }
+  nav button:hover { color: var(--aws-orange); }
+  nav button.active-nav { color: var(--aws-orange); }
+
+  #slide-counter {
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    color: var(--text-muted);
+    min-width: 60px;
+    text-align: center;
+  }
+
+  .dot-nav {
+    display: flex; gap: 6px;
+  }
+  .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.3s;
+  }
+  .dot.active { background: var(--aws-orange); transform: scale(1.4); }
+
+  /* ── SLIDES CONTAINER ── */
+  #slides {
+    width: 100%; height: 100vh;
+    position: relative;
+  }
+
+  .slide {
+    position: absolute;
+    inset: 0;
+    padding: 60px 72px 100px;
+    display: flex;
+    flex-direction: column;
+    opacity: 0;
+    transform: translateY(30px);
+    pointer-events: none;
+    transition: opacity 0.5s ease, transform 0.5s ease;
+    overflow-y: auto;
+  }
+  .slide.active {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: all;
+  }
+  .slide.exit {
+    opacity: 0;
+    transform: translateY(-30px);
+  }
+
+  /* ── BACKGROUND GRID ── */
+  .slide::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,168,204,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,168,204,0.04) 1px, transparent 1px);
+    background-size: 48px 48px;
+    pointer-events: none;
+  }
+
+  /* ── TYPOGRAPHY ── */
+  .slide-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--aws-orange);
+    margin-bottom: 16px;
+  }
+
+  h1, h2 {
+    font-family: 'Syne', sans-serif;
+  }
+
+  h1 {
+    font-size: clamp(36px, 5vw, 64px);
+    font-weight: 800;
+    line-height: 1.05;
+  }
+
+  h2 {
+    font-size: clamp(24px, 3vw, 40px);
+    font-weight: 700;
+    margin-bottom: 28px;
+  }
+
+  .highlight { color: var(--aws-orange); }
+  .cyan { color: var(--aws-cyan); }
+  .green { color: var(--accent-green); }
+
+  /* ── CARDS ── */
+  .cards {
+    display: grid;
+    gap: 16px;
+  }
+  .cards.cols-2 { grid-template-columns: 1fr 1fr; }
+  .cards.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 24px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.3s, transform 0.2s;
+  }
+  .card:hover {
+    border-color: var(--aws-cyan);
+    transform: translateY(-2px);
+  }
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--aws-orange), var(--aws-cyan));
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .card:hover::before { opacity: 1; }
+
+  .card-icon { font-size: 28px; margin-bottom: 10px; }
+  .card h3 {
+    font-family: 'Syne', sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    color: var(--aws-cyan);
+  }
+  .card p {
+    font-size: 14px;
+    line-height: 1.6;
+    color: rgba(240,246,255,0.75);
+  }
+
+  /* ── STATS ── */
+  .stats-row {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 32px;
+  }
+  .stat-box {
+    background: rgba(255,153,0,0.08);
+    border: 1px solid rgba(255,153,0,0.3);
+    border-radius: 14px;
+    padding: 20px 28px;
+    text-align: center;
+    flex: 1;
+  }
+  .stat-num {
+    font-family: 'Syne', sans-serif;
+    font-size: 36px;
+    font-weight: 800;
+    color: var(--aws-orange);
+    display: block;
+  }
+  .stat-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  /* ── SLIDE 1: HERO ── */
+  #slide-1 {
+    background: radial-gradient(ellipse at 70% 40%, rgba(26,110,191,0.25) 0%, transparent 60%),
+                radial-gradient(ellipse at 20% 80%, rgba(255,153,0,0.12) 0%, transparent 50%);
+    justify-content: center;
+  }
+  #slide-1 .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255,153,0,0.12);
+    border: 1px solid rgba(255,153,0,0.4);
+    border-radius: 50px;
+    padding: 6px 16px;
+    font-size: 12px;
+    font-family: 'Space Mono', monospace;
+    color: var(--aws-orange);
+    margin-bottom: 28px;
+    width: fit-content;
+  }
+  #slide-1 .hero-sub {
+    font-size: 18px;
+    color: var(--text-muted);
+    margin-top: 20px;
+    max-width: 620px;
+    line-height: 1.6;
+  }
+  #slide-1 .hero-stats {
+    display: flex;
+    gap: 28px;
+    margin-top: 32px;
+  }
+  #slide-1 .hero-stat {
+    display: flex;
+    flex-direction: column;
+  }
+  #slide-1 .hero-stat strong {
+    font-family: 'Syne', sans-serif;
+    font-size: 28px;
+    font-weight: 800;
+    color: var(--aws-cyan);
+  }
+  #slide-1 .hero-stat span {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  #slide-1 .divider {
+    width: 1px;
+    background: var(--border);
+  }
+
+  /* ── DESCRIPTION BOX ── */
+  .description-box {
+    background: rgba(0,168,204,0.05);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 18px 24px;
+    margin-top: 24px;
+    max-width: 680px;
+    font-size: 13.5px;
+    color: rgba(240,246,255,0.75);
+    line-height: 1.7;
+  }
+  .description-box strong {
+    color: var(--aws-cyan);
+    font-size: 11px;
+    font-family: 'Space Mono', monospace;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 6px;
+  }
+
+  /* ── TEAM MEMBERS ── */
+  .team-row {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+    flex-wrap: wrap;
+  }
+  .team-member {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255,153,0,0.07);
+    border: 1px solid rgba(255,153,0,0.25);
+    border-radius: 50px;
+    padding: 7px 16px;
+    font-size: 13px;
+    color: rgba(240,246,255,0.85);
+  }
+  .team-member .avatar {
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--aws-orange), var(--aws-cyan));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--aws-dark);
+    flex-shrink: 0;
+  }
+  .aws-logo {
+    position: absolute;
+    top: 52px; right: 72px;
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-muted);
+    letter-spacing: 2px;
+  }
+  .aws-logo span { color: var(--aws-orange); }
+
+  /* ── SLIDE 2: QUÉ ES AURORA ── */
+  #slide-2 .definition-box {
+    background: rgba(0, 168, 204, 0.06);
+    border-left: 3px solid var(--aws-cyan);
+    border-radius: 0 12px 12px 0;
+    padding: 20px 24px;
+    margin-bottom: 28px;
+    font-size: 15px;
+    line-height: 1.7;
+    color: rgba(240,246,255,0.85);
+  }
+
+  /* ── SLIDE 3: SERVERLESS ── */
+  .acu-chart {
+    background: rgba(10,22,40,0.6);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    margin-top: 8px;
+    position: relative;
+  }
+  .acu-bar-container {
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+    height: 140px;
+    padding: 0 8px;
+  }
+  .acu-phase {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+  .acu-bar {
+    width: 100%;
+    border-radius: 6px 6px 0 0;
+    background: linear-gradient(180deg, var(--aws-cyan), var(--aws-blue));
+    transition: height 1.5s cubic-bezier(.22,1,.36,1);
+    position: relative;
+  }
+  .acu-bar.peak {
+    background: linear-gradient(180deg, var(--aws-orange), #FF6B00);
+  }
+  .acu-value {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: var(--aws-orange);
+    font-weight: 700;
+  }
+  .acu-label {
+    font-size: 10px;
+    color: var(--text-muted);
+    text-align: center;
+  }
+
+  .acu-features {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-top: 16px;
+  }
+  .acu-feat {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  .acu-num {
+    font-family: 'Space Mono', monospace;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--aws-orange);
+    line-height: 1;
+    min-width: 24px;
+  }
+  .acu-feat p { font-size: 13px; color: rgba(240,246,255,0.7); line-height: 1.5; }
+  .acu-feat strong { color: var(--text-primary); display: block; font-size: 14px; margin-bottom: 2px; }
+
+  /* ── SLIDE 4: ARQUITECTURA ── */
+  .arch-diagram {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 8px;
+  }
+  .arch-row {
+    display: flex;
+    gap: 10px;
+    align-items: stretch;
+  }
+  .arch-layer-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    white-space: nowrap;
+    min-width: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .arch-nodes {
+    display: flex;
+    gap: 8px;
+    flex: 1;
+  }
+  .arch-node {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 12px;
+    text-align: center;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    transition: border-color 0.2s;
+  }
+  .arch-node:hover { border-color: var(--aws-cyan); }
+  .arch-node .icon { font-size: 18px; }
+  .arch-node .name { font-size: 11px; font-weight: 600; color: var(--aws-cyan); }
+  .arch-node .desc { font-size: 10px; color: var(--text-muted); }
+  .arch-arrow {
+    text-align: center;
+    color: var(--aws-orange);
+    font-size: 16px;
+    padding: 2px 0;
+  }
+  .arch-node.primary { border-color: rgba(255,153,0,0.4); background: rgba(255,153,0,0.07); }
+  .arch-node.storage { border-color: rgba(0,214,143,0.3); background: rgba(0,214,143,0.05); }
+
+  /* ── SLIDE 5: ESCALADO ── */
+  .scale-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-top: 8px;
+  }
+  .scale-section h3 {
+    font-family: 'Syne', sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--aws-orange);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .scale-items {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .scale-item {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .scale-badge {
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--aws-cyan);
+    min-width: 70px;
+  }
+  .scale-item p { font-size: 13px; color: rgba(240,246,255,0.7); }
+
+  /* ── SLIDE 6: ALTA DISPONIBILIDAD ── */
+  .az-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px;
+    margin-top: 8px;
+  }
+  .az-col {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px;
+  }
+  .az-title {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: var(--aws-orange);
+    margin-bottom: 16px;
+    text-transform: uppercase;
+  }
+  .az-item {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(0,168,204,0.1);
+    font-size: 13px;
+  }
+  .az-item:last-child { border-bottom: none; }
+  .failover-box {
+    background: rgba(255,77,109,0.08);
+    border: 1px solid rgba(255,77,109,0.3);
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-top: 16px;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  .failover-box strong { color: var(--accent-red); }
+
+  /* ── SLIDE 7: SEGURIDAD ── */
+  .security-cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px;
+    margin-top: 8px;
+  }
+  .security-col {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px;
+  }
+  .security-col h3 {
+    font-family: 'Syne', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--aws-cyan);
+    margin-bottom: 4px;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .security-col .sub { font-size: 12px; color: var(--text-muted); margin-bottom: 14px; }
+  .security-item {
+    font-size: 12.5px;
+    color: rgba(240,246,255,0.72);
+    line-height: 1.6;
+    padding: 5px 0;
+    border-bottom: 1px solid rgba(0,168,204,0.08);
+  }
+  .security-item:last-child { border-bottom: none; }
+
+  /* ── SLIDE 8: COSTOS ── */
+  .cost-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-top: 8px;
+  }
+  .cost-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 18px 20px;
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    transition: border-color 0.2s;
+  }
+  .cost-card:hover { border-color: var(--aws-orange); }
+  .cost-icon {
+    font-size: 22px;
+    min-width: 32px;
+  }
+  .cost-card h4 {
+    font-family: 'Syne', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--aws-orange);
+    margin-bottom: 4px;
+  }
+  .cost-card p { font-size: 13px; color: rgba(240,246,255,0.7); line-height: 1.5; }
+
+  /* ── SLIDE 9: TIMELINE ── */
+  .timeline {
+    display: flex;
+    gap: 0;
+    margin-top: 16px;
+    position: relative;
+  }
+  .timeline::before {
+    content: '';
+    position: absolute;
+    top: 38px;
+    left: 10%;
+    right: 10%;
+    height: 2px;
+    background: linear-gradient(90deg, var(--aws-cyan), var(--aws-orange), var(--aws-cyan));
+  }
+  .tl-phase {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 0 8px;
+    cursor: pointer;
+  }
+  .tl-dot {
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: var(--aws-dark);
+    border: 2px solid var(--aws-cyan);
+    z-index: 1;
+    transition: all 0.2s;
+  }
+  .tl-phase:hover .tl-dot,
+  .tl-phase.tl-active .tl-dot {
+    background: var(--aws-orange);
+    border-color: var(--aws-orange);
+    transform: scale(1.4);
+  }
+  .tl-time {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: var(--aws-orange);
+    font-weight: 700;
+    text-align: center;
+  }
+  .tl-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px;
+    font-size: 11px;
+    line-height: 1.5;
+    color: rgba(240,246,255,0.7);
+    text-align: center;
+    transition: border-color 0.2s;
+  }
+  .tl-phase:hover .tl-card,
+  .tl-phase.tl-active .tl-card {
+    border-color: var(--aws-orange);
+    color: var(--text-primary);
+  }
+  .tl-card strong { display: block; color: var(--aws-cyan); margin-bottom: 4px; font-size: 12px; }
+
+  /* ── SLIDE 10: CONCLUSIÓN ── */
+  #slide-10 {
+    background: radial-gradient(ellipse at 30% 50%, rgba(255,153,0,0.12) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 30%, rgba(0,168,204,0.15) 0%, transparent 50%);
+    justify-content: center;
+  }
+  .conclusion-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-top: 28px;
+  }
+  .conclusion-card {
+    background: rgba(26,110,191,0.1);
+    border: 1px solid rgba(0,168,204,0.2);
+    border-radius: 16px;
+    padding: 22px 24px;
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+    transition: all 0.25s;
+  }
+  .conclusion-card:hover {
+    background: rgba(26,110,191,0.18);
+    border-color: var(--aws-cyan);
+    transform: translateY(-2px);
+  }
+  .conclusion-icon { font-size: 30px; }
+  .conclusion-card h4 {
+    font-family: 'Syne', sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--aws-orange);
+    margin-bottom: 6px;
+  }
+  .conclusion-card p { font-size: 13px; color: rgba(240,246,255,0.72); line-height: 1.5; }
+
+  /* ── KEYBOARD HINT ── */
+  .key-hint {
+    position: fixed;
+    top: 20px; left: 50%;
+    transform: translateX(-50%);
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: rgba(123,155,196,0.4);
+    letter-spacing: 1px;
+    z-index: 50;
+  }
+
+  /* Scrollbar */
+  .slide::-webkit-scrollbar { width: 4px; }
+  .slide::-webkit-scrollbar-track { background: transparent; }
+  .slide::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<div id="progress-bar"></div>
+<div class="key-hint">← → FLECHAS · ESPACIO · CLICK</div>
+
+<!-- SLIDE 1: HERO -->
+<div id="slides">
+
+  <div class="slide active" id="slide-1">
+    <div class="aws-logo"><span>AWS</span> TRAINING</div>
+    <div class="badge">⚡ CASO PRÁCTICO 3 · MÓDULO 8</div>
+    <div class="slide-tag">Amazon Web Services</div>
+    <h1>Amazon<br><span class="highlight">Aurora</span></h1>
+    <p class="hero-sub">Arquitectura, Funcionamiento y Escalabilidad<br>Solución de Base de Datos SaaS para procesamiento de pagos de alto volumen.</p>
+    <div class="hero-stats">
+      <div class="hero-stat"><strong>+1M</strong><span>transacciones/día</span></div>
+      <div class="divider"></div>
+      <div class="hero-stat"><strong>30x</strong><span>escalado en picos</span></div>
+      <div class="divider"></div>
+      <div class="hero-stat"><strong>99.99%</strong><span>disponibilidad</span></div>
+      <div class="divider"></div>
+      <div class="hero-stat"><strong>Multi-AZ</strong><span>alta disponibilidad</span></div>
+    </div>
+    <div class="description-box">
+      <strong>📋 Descripción del trabajo</strong>
+      En este caso práctico se diseñó e implementó conceptualmente una solución de base de datos SaaS usando Amazon Aurora para una empresa de procesamiento de pagos en línea de alto volumen. Se analizó la arquitectura Multi-AZ, el escalado automático con Aurora Serverless v2, la seguridad en capas con IAM, KMS y VPC, y el modelo de costos optimizado del servicio. La presentación fue convertida a formato web interactivo para facilitar su consulta desde cualquier dispositivo.
+    </div>
+    <div class="team-row">
+      <div class="team-member"><div class="avatar">JO</div> Julián Ricardo Osorio García</div>
+      <div class="team-member"><div class="avatar">CS</div> Cristian Camilo Sanabria Sosa</div>
+      <div class="team-member"><div class="avatar">LR</div> Laura Sofía Rozo Velandia</div>
+    </div>
+  </div>
+
+  <!-- SLIDE 2: QUÉ ES AURORA -->
+  <div class="slide" id="slide-2">
+    <div class="slide-tag">Fundamentos</div>
+    <h2>¿Qué es <span class="highlight">Amazon Aurora</span>?</h2>
+    <div class="definition-box">
+      Amazon Aurora es un motor de base de datos relacional totalmente administrado por AWS, compatible con MySQL y PostgreSQL. Diseñado desde cero para la nube, combina el rendimiento de las BD comerciales con la simplicidad del código abierto. <strong>Supera 5x el rendimiento de MySQL estándar y 3x el de PostgreSQL.</strong>
+    </div>
+    <div class="cards cols-3">
+      <div class="card">
+        <div class="card-icon">🏗️</div>
+        <h3>Motor Nativo en la Nube</h3>
+        <p>No es una adaptación. Aurora fue construido especialmente para entornos de nube distribuidos, separando almacenamiento del cómputo para escalar cada capa de forma independiente.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🔄</div>
+        <h3>Compatible MySQL/PostgreSQL</h3>
+        <p>Las aplicaciones existentes pueden migrar a Aurora sin cambiar el código. Usa los mismos drivers, herramientas y sentencias SQL estándar.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">☁️</div>
+        <h3>Servicio Totalmente Administrado</h3>
+        <p>AWS gestiona backups automáticos, parches de seguridad, monitoreo continuo, recuperación ante fallos y replicación.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- SLIDE 3: SERVERLESS -->
+  <div class="slide" id="slide-3">
+    <div class="slide-tag">Escalado Automático</div>
+    <h2>Aurora Serverless v2<br><span class="cyan">El Motor del Escalado Automático</span></h2>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+      <div class="acu-chart">
+        <div style="font-family:'Space Mono',monospace;font-size:11px;color:var(--text-muted);margin-bottom:16px;letter-spacing:1px;">↑ CAPACIDAD ACU · VENTA FLASH</div>
+        <div class="acu-bar-container" id="acu-bars">
+          <div class="acu-phase">
+            <div class="acu-value">4</div>
+            <div class="acu-bar" style="height:0%" data-h="11%"></div>
+            <div class="acu-label">Normal</div>
+          </div>
+          <div class="acu-phase">
+            <div class="acu-value">20</div>
+            <div class="acu-bar" style="height:0%" data-h="28%"></div>
+            <div class="acu-label">Inicio</div>
+          </div>
+          <div class="acu-phase">
+            <div class="acu-value">60</div>
+            <div class="acu-bar" style="height:0%" data-h="54%"></div>
+            <div class="acu-label">Pico</div>
+          </div>
+          <div class="acu-phase">
+            <div class="acu-value">120</div>
+            <div class="acu-bar peak" style="height:0%" data-h="92%"></div>
+            <div class="acu-label">Máximo</div>
+          </div>
+          <div class="acu-phase">
+            <div class="acu-value">60</div>
+            <div class="acu-bar" style="height:0%" data-h="54%"></div>
+            <div class="acu-label">Baja</div>
+          </div>
+          <div class="acu-phase">
+            <div class="acu-value">4</div>
+            <div class="acu-bar" style="height:0%" data-h="11%"></div>
+            <div class="acu-label">Normal</div>
+          </div>
+        </div>
+      </div>
+      <div class="acu-features">
+        <div class="acu-feat">
+          <div class="acu-num">1</div>
+          <div><strong>¿Qué son las ACUs?</strong><p>Aurora Capacity Units: cada ACU ≈ 2 GB RAM + CPU + red. Rango de 0.5 a 128 ACUs configurables.</p></div>
+        </div>
+        <div class="acu-feat">
+          <div class="acu-num">2</div>
+          <div><strong>Rango de Escalado</strong><p>Pasa de carga normal a máxima en segundos, sin reinicios ni interrupciones del servicio.</p></div>
+        </div>
+        <div class="acu-feat">
+          <div class="acu-num">3</div>
+          <div><strong>Escalado en Fracciones</strong><p>A diferencia de v1, incrementa la capacidad en fracciones de ACU con precisión milimétrica.</p></div>
+        </div>
+        <div class="acu-feat">
+          <div class="acu-num">4</div>
+          <div><strong>Sin Cold Starts</strong><p>Capacidad mínima nunca llega a cero en BD productivas. Elimina tiempos de arranque en frío.</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SLIDE 4: ARQUITECTURA -->
+  <div class="slide" id="slide-4">
+    <div class="slide-tag">Diseño del Sistema</div>
+    <h2>Diagrama de <span class="highlight">Arquitectura Completa</span></h2>
+    <div class="arch-diagram">
+      <div class="arch-row">
+        <div class="arch-layer-label">CLIENTE</div>
+        <div class="arch-nodes">
+          <div class="arch-node"><div class="icon">🛍️</div><div class="name">E-Commerce</div><div class="desc">Web/App</div></div>
+          <div class="arch-node"><div class="icon">📱</div><div class="name">App Móvil</div><div class="desc">iOS/Android</div></div>
+          <div class="arch-node"><div class="icon">💻</div><div class="name">Web Browser</div><div class="desc">PWA</div></div>
+        </div>
+      </div>
+      <div class="arch-arrow">↓</div>
+      <div class="arch-row">
+        <div class="arch-layer-label">SEGURIDAD</div>
+        <div class="arch-nodes">
+          <div class="arch-node"><div class="icon">🔑</div><div class="name">AWS IAM</div><div class="desc">Autenticación</div></div>
+          <div class="arch-node"><div class="icon">🗝️</div><div class="name">AWS KMS</div><div class="desc">Cifrado AES-256</div></div>
+          <div class="arch-node"><div class="icon">🛡️</div><div class="name">VPC + WAF</div><div class="desc">Aislamiento red</div></div>
+        </div>
+      </div>
+      <div class="arch-arrow">↓</div>
+      <div class="arch-row">
+        <div class="arch-layer-label">CÓMPUTO</div>
+        <div class="arch-nodes">
+          <div class="arch-node" style="flex:0.6"><div class="icon">⚖️</div><div class="name">Load Balancer</div><div class="desc">ELB</div></div>
+          <div class="arch-node"><div class="icon">🖥️</div><div class="name">EC2 Auto Scaling</div><div class="desc">mín 2 – máx 30</div></div>
+          <div class="arch-node" style="flex:0.6"><div class="icon">🔌</div><div class="name">RDS Proxy</div><div class="desc">Pool + failover</div></div>
+        </div>
+      </div>
+      <div class="arch-arrow">↓</div>
+      <div class="arch-row">
+        <div class="arch-layer-label">BASE DE DATOS</div>
+        <div class="arch-nodes">
+          <div class="arch-node primary"><div class="icon">✍️</div><div class="name">Aurora Writer</div><div class="desc">Primary — AZ-A</div></div>
+          <div class="arch-node"><div class="icon">📖</div><div class="name">Réplica 1</div><div class="desc">AZ-A</div></div>
+          <div class="arch-node"><div class="icon">📖</div><div class="name">Réplica 2</div><div class="desc">AZ-B</div></div>
+          <div class="arch-node"><div class="icon">📖</div><div class="name">Réplica 3</div><div class="desc">AZ-C</div></div>
+        </div>
+      </div>
+      <div class="arch-arrow">↓</div>
+      <div class="arch-row">
+        <div class="arch-layer-label">STORAGE</div>
+        <div class="arch-nodes">
+          <div class="arch-node storage" style="flex:2"><div class="icon">💿</div><div class="name">Aurora Shared Storage</div><div class="desc">6 copias · 3 AZs · auto-grow hasta 128 TB · replicación síncrona · backup → S3</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SLIDE 5: ESCALADO -->
+  <div class="slide" id="slide-5">
+    <div class="slide-tag">Elasticidad</div>
+    <h2>¿Cómo <span class="highlight">Escala</span> la Solución?</h2>
+    <div class="scale-grid">
+      <div class="scale-section">
+        <h3>📈 Escalado Vertical — Serverless v2</h3>
+        <div class="scale-items">
+          <div class="scale-item"><div class="scale-badge">0.5 ACU</div><p>Carga mínima base</p></div>
+          <div class="scale-item"><div class="scale-badge">4 ACU</div><p>Operación normal</p></div>
+          <div class="scale-item"><div class="scale-badge">16 ACU</div><p>Carga moderada</p></div>
+          <div class="scale-item"><div class="scale-badge">64 ACU</div><p>Pico creciente</p></div>
+          <div class="scale-item" style="border-color:rgba(255,153,0,0.4)"><div class="scale-badge" style="color:var(--aws-orange)">128 ACU</div><p>Pico máximo · expansión automática sin reinicio</p></div>
+        </div>
+      </div>
+      <div class="scale-section">
+        <h3>↔️ Escalado Horizontal — Réplicas + EC2</h3>
+        <div class="scale-items">
+          <div class="scale-item"><div class="scale-badge">2 instancias</div><p>EC2 normal — operación estándar</p></div>
+          <div class="scale-item"><div class="scale-badge">8 instancias</div><p>EC2 moderado — demanda creciente</p></div>
+          <div class="scale-item" style="border-color:rgba(255,153,0,0.4)"><div class="scale-badge" style="color:var(--aws-orange)">30 instancias</div><p>EC2 pico 30x — venta flash</p></div>
+          <div class="scale-item"><div class="scale-badge">Réplica 1-3</div><p>Lecturas distribuidas en AZ-A, B, C</p></div>
+          <div class="scale-item"><div class="scale-badge">+ hasta 12</div><p>Réplicas adicionales para lecturas masivas</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SLIDE 6: ALTA DISPONIBILIDAD -->
+  <div class="slide" id="slide-6">
+    <div class="slide-tag">Resiliencia</div>
+    <h2>Alta Disponibilidad y <span class="cyan">Recuperación ante Fallos</span></h2>
+    <div class="az-grid">
+      <div class="az-col">
+        <div class="az-title">AZ-A · Principal</div>
+        <div class="az-item"><span>🖥️</span> EC2 App (activa)</div>
+        <div class="az-item"><span>✍️</span> Aurora Primary</div>
+        <div class="az-item"><span>💿</span> Storage Shard 1+2</div>
+      </div>
+      <div class="az-col">
+        <div class="az-title">AZ-B · Secundaria</div>
+        <div class="az-item"><span>🖥️</span> EC2 App (activa)</div>
+        <div class="az-item"><span>📖</span> Réplica Lectura</div>
+        <div class="az-item"><span>💿</span> Storage Shard 3+4</div>
+      </div>
+      <div class="az-col">
+        <div class="az-title">AZ-C · Failover</div>
+        <div class="az-item"><span>🖥️</span> EC2 App (standby)</div>
+        <div class="az-item"><span>📖</span> Réplica Lectura</div>
+        <div class="az-item"><span>💿</span> Storage Shard 5+6</div>
+      </div>
+    </div>
+    <div class="failover-box">
+      ⚡ <strong>Failover Automático:</strong> Si el nodo Primary falla → Aurora promueve una réplica a Primary en <strong>&lt; 30 segundos</strong> sin pérdida de datos (<strong>RPO ≈ 0</strong>). RDS Proxy redirige las conexiones automáticamente sin que la aplicación lo note.
+    </div>
+  </div>
+
+  <!-- SLIDE 7: SEGURIDAD -->
+  <div class="slide" id="slide-7">
+    <div class="slide-tag">Protección</div>
+    <h2>🔐 Seguridad en Capas: <span class="highlight">IAM + KMS + VPC</span></h2>
+    <div class="security-cols">
+      <div class="security-col">
+        <h3>🔑 AWS IAM</h3>
+        <div class="sub">Gestión de Identidades</div>
+        <div class="security-item">IAM controla quién puede conectarse a Aurora y qué operaciones puede ejecutar.</div>
+        <div class="security-item">Roles IAM específicos para cada microservicio de la aplicación de pagos.</div>
+        <div class="security-item">Instancias EC2 obtienen credenciales temporales automáticas via Instance Profiles.</div>
+        <div class="security-item">Database Authentication con tokens temporales de 15 min.</div>
+        <div class="security-item">Principio de mínimo privilegio: cada servicio accede solo a lo necesario.</div>
+      </div>
+      <div class="security-col">
+        <h3>🗝️ AWS KMS</h3>
+        <div class="sub">Gestión de Claves de Cifrado</div>
+        <div class="security-item">KMS gestiona claves AES-256 para datos en reposo.</div>
+        <div class="security-item">Todos los volúmenes Aurora se cifran automáticamente con CMK.</div>
+        <div class="security-item">Backups en S3 y snapshots heredan el cifrado de la BD fuente.</div>
+        <div class="security-item">Rotación automática de claves (anual o manual bajo demanda).</div>
+        <div class="security-item">Integración con CloudTrail para auditoría completa de uso de claves.</div>
+      </div>
+      <div class="security-col">
+        <h3>🛡️ VPC + SSL/TLS</h3>
+        <div class="sub">Aislamiento y Tránsito Seguro</div>
+        <div class="security-item">Aurora vive dentro de VPC privada, nunca expuesta a Internet directamente.</div>
+        <div class="security-item">Security Groups: solo EC2 autorizado accede al puerto 3306.</div>
+        <div class="security-item">SSL/TLS obligatorio en tránsito: cada conexión app-BD está cifrada end-to-end.</div>
+        <div class="security-item">Network ACLs como segunda capa de filtrado a nivel de subred.</div>
+        <div class="security-item">AWS WAF protege contra inyección SQL y ataques de capa 7.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SLIDE 8: COSTOS -->
+  <div class="slide" id="slide-8">
+    <div class="slide-tag">Modelo Económico</div>
+    <h2>Modelo SaaS: <span class="highlight">Administración y Costos</span></h2>
+    <div class="cost-grid">
+      <div class="cost-card">
+        <div class="cost-icon">💲</div>
+        <div><h4>ACUs por segundo</h4><p>Facturación granular: solo las ACUs activas cada segundo, no instancias reservadas. Pagas exactamente lo que consumes.</p></div>
+      </div>
+      <div class="cost-card">
+        <div class="cost-icon">💾</div>
+        <div><h4>Almacenamiento por GB/mes</h4><p>Crece automáticamente desde 10 GB hasta 128 TB. Pagas solo el espacio real utilizado.</p></div>
+      </div>
+      <div class="cost-card">
+        <div class="cost-icon">⚡</div>
+        <div><h4>I/O por millón de solicitudes</h4><p>Cada lectura/escritura al almacenamiento tiene un costo marginal muy bajo, distribuido eficientemente.</p></div>
+      </div>
+      <div class="cost-card">
+        <div class="cost-icon">🆓</div>
+        <div><h4>Sin licencias comerciales</h4><p>Compatible con MySQL/PG open source: cero costo de licencia Oracle o SQL Server.</p></div>
+      </div>
+      <div class="cost-card">
+        <div class="cost-icon">🔌</div>
+        <div><h4>RDS Proxy incluido</h4><p>Reduce conexiones idle, optimizando costos en picos masivos de conexiones simultáneas.</p></div>
+      </div>
+      <div class="cost-card">
+        <div class="cost-icon">🔧</div>
+        <div><h4>AWS gestiona todo</h4><p>Parches, backups, monitoreo, failover y escalado. El equipo se enfoca 100% en el negocio.</p></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SLIDE 9: TIMELINE -->
+  <div class="slide" id="slide-9">
+    <div class="slide-tag">Simulación en Vivo</div>
+    <h2>Respuesta al Pico de Demanda <span class="highlight">30x</span> — Venta Flash</h2>
+    <div class="timeline" id="timeline">
+      <div class="tl-phase tl-active" data-idx="0">
+        <div class="tl-dot"></div>
+        <div class="tl-time">T-0</div>
+        <div class="tl-card">
+          <strong>Operación Normal</strong>
+          EC2: 2 inst.<br>Aurora: 4 ACUs<br>Réplicas: 1<br>Tráfico: ~1M tx/día
+        </div>
+      </div>
+      <div class="tl-phase" data-idx="1">
+        <div class="tl-dot"></div>
+        <div class="tl-time">T+2min</div>
+        <div class="tl-card">
+          <strong>Detección</strong>
+          CloudWatch detecta<br>CPU &gt;60%<br>Auto Scaling dispara<br>nueva EC2
+        </div>
+      </div>
+      <div class="tl-phase" data-idx="2">
+        <div class="tl-dot"></div>
+        <div class="tl-time">T+5min</div>
+        <div class="tl-card">
+          <strong>Escalado Activo</strong>
+          EC2: 10 inst.<br>Aurora: 60+ ACUs<br>Réplicas: 4<br>Serverless escala
+        </div>
+      </div>
+      <div class="tl-phase" data-idx="3">
+        <div class="tl-dot"></div>
+        <div class="tl-time">T+60min</div>
+        <div class="tl-card">
+          <strong>Pico Sostenido</strong>
+          EC2: 30 inst.<br>Aurora: ~120 ACUs<br>Réplicas: 8-10<br>RDS Proxy absorbe
+        </div>
+      </div>
+      <div class="tl-phase" data-idx="4">
+        <div class="tl-dot"></div>
+        <div class="tl-time">T+3h</div>
+        <div class="tl-card">
+          <strong>Descenso</strong>
+          EC2 termina inst.<br>Aurora reduce ACUs<br>Serverless: ahorro<br>≈ 4 ACUs al final
+        </div>
+      </div>
+    </div>
+    <div style="background:rgba(0,214,143,0.06);border:1px solid rgba(0,214,143,0.25);border-radius:12px;padding:16px 20px;margin-top:20px;font-size:14px;color:rgba(240,246,255,0.8);line-height:1.6;">
+      🤖 <strong style="color:var(--accent-green)">100% automático</strong> — El sistema escala y se contrae sin intervención humana, garantizando rendimiento y optimizando costos en tiempo real.
+    </div>
+  </div>
+
+  <!-- SLIDE 10: CONCLUSIÓN -->
+  <div class="slide" id="slide-10">
+    <div class="slide-tag">Resumen Ejecutivo</div>
+    <h2>Amazon Aurora:<br><span class="highlight">La Decisión Correcta</span> para Pagos de Alto Volumen</h2>
+    <div class="conclusion-grid">
+      <div class="conclusion-card">
+        <div class="conclusion-icon">⚡</div>
+        <div><h4>Rendimiento Superior</h4><p>5x MySQL. Latencia sub-5ms. Arquitectura de almacenamiento distribuido que elimina el cuello de botella del disco.</p></div>
+      </div>
+      <div class="conclusion-card">
+        <div class="conclusion-icon">📈</div>
+        <div><h4>Escalado sin Fricciones</h4><p>Serverless v2 escala de 4 a 120 ACUs en segundos durante ventas flash, sin downtime ni intervención del equipo.</p></div>
+      </div>
+      <div class="conclusion-card">
+        <div class="conclusion-icon">🔐</div>
+        <div><h4>Seguridad Financiera</h4><p>KMS cifra todo en reposo. IAM controla el acceso. VPC aísla la BD. SSL/TLS protege cada conexión app-BD.</p></div>
+      </div>
+      <div class="conclusion-card">
+        <div class="conclusion-icon">🔄</div>
+        <div><h4>Resiliencia Multi-AZ</h4><p>6 copias de datos en 3 zonas. Failover &lt;30s. RDS Proxy redirige conexiones sin que la app lo note.</p></div>
+      </div>
+      <div class="conclusion-card">
+        <div class="conclusion-icon">💰</div>
+        <div><h4>Costo Optimizado</h4><p>Pago por ACUs activas por segundo. Cuando baja la demanda, la capacidad y el costo bajan automáticamente.</p></div>
+      </div>
+      <div class="conclusion-card">
+        <div class="conclusion-icon">🛠️</div>
+        <div><h4>Cero Administración</h4><p>AWS gestiona backups, parches, monitoreo y failover. El equipo dedica el 100% al producto, no a la infraestructura.</p></div>
+      </div>
+    </div>
+    <div style="margin-top:20px;font-family:'Space Mono',monospace;font-size:10px;color:var(--text-muted);letter-spacing:2px;">
+      AWS TRAINING AND CERTIFICATION · MÓDULO 8: BASES DE DATOS · CASO PRÁCTICO 3
+    </div>
+  </div>
+
+</div>
+
+<!-- NAVIGATION -->
+<nav>
+  <button id="btn-prev" onclick="changeSlide(-1)">←</button>
+  <div class="dot-nav" id="dots"></div>
+  <span id="slide-counter">1 / 10</span>
+  <button id="btn-next" onclick="changeSlide(1)">→</button>
+</nav>
+
+<script>
+  let current = 0;
+  const total = 10;
+  const slides = document.querySelectorAll('.slide');
+  const counter = document.getElementById('slide-counter');
+  const progressBar = document.getElementById('progress-bar');
+  const dotsContainer = document.getElementById('dots');
+
+  // Build dots
+  for (let i = 0; i < total; i++) {
+    const d = document.createElement('div');
+    d.className = 'dot' + (i === 0 ? ' active' : '');
+    d.onclick = () => goTo(i);
+    dotsContainer.appendChild(d);
+  }
+
+  function updateUI() {
+    slides.forEach((s, i) => {
+      s.classList.remove('active', 'exit');
+      if (i === current) s.classList.add('active');
+    });
+    document.querySelectorAll('.dot').forEach((d, i) => {
+      d.classList.toggle('active', i === current);
+    });
+    counter.textContent = `${current + 1} / ${total}`;
+    progressBar.style.width = `${((current + 1) / total) * 100}%`;
+
+    // Trigger ACU bars animation on slide 3
+    if (current === 2) animateACU();
+  }
+
+  function goTo(idx) {
+    if (idx < 0 || idx >= total) return;
+    slides[current].classList.add('exit');
+    setTimeout(() => slides[current - (current === idx ? 0 : 0)].classList.remove('exit'), 500);
+    current = idx;
+    updateUI();
+  }
+
+  function changeSlide(dir) {
+    const next = current + dir;
+    if (next < 0 || next >= total) return;
+    slides[current].classList.add('exit');
+    setTimeout(() => {
+      slides.forEach(s => s.classList.remove('exit'));
+    }, 500);
+    current = next;
+    updateUI();
+  }
+
+  function animateACU() {
+    const bars = document.querySelectorAll('#acu-bars .acu-bar');
+    bars.forEach(bar => {
+      bar.style.height = '0%';
+      setTimeout(() => {
+        bar.style.height = bar.dataset.h;
+      }, 100);
+    });
+  }
+
+  // Timeline interaction
+  document.querySelectorAll('.tl-phase').forEach(phase => {
+    phase.addEventListener('click', () => {
+      document.querySelectorAll('.tl-phase').forEach(p => p.classList.remove('tl-active'));
+      phase.classList.add('tl-active');
+    });
+  });
+
+  // Keyboard
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === ' ') changeSlide(1);
+    if (e.key === 'ArrowLeft') changeSlide(-1);
+  });
+
+  // Touch
+  let touchX = 0;
+  document.addEventListener('touchstart', e => touchX = e.touches[0].clientX);
+  document.addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - touchX;
+    if (Math.abs(dx) > 50) changeSlide(dx < 0 ? 1 : -1);
+  });
+
+  updateUI();
+</script>
+</body>
+</html>
