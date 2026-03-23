@@ -8,12 +8,6 @@ Presentación web interactiva sobre el diseño e implementación conceptual de u
 
 La presentación cubre arquitectura Multi-AZ, escalado automático con Aurora Serverless v2, seguridad en capas (IAM + KMS + VPC) y modelo de costos optimizado.
 
-## 🔗 Ver presentación
-
-👉 [https://laussr.github.io/Aurora-presentacion](https://laussr.github.io/Aurora-presentacion)
-
-No requiere descarga. Se abre directo en el navegador desde cualquier dispositivo.
-
 ## 📌 Contenido
 
 - ¿Qué es Amazon Aurora?
